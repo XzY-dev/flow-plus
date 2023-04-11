@@ -89,7 +89,7 @@ ENV/
 .ropeproject
 
 # VSCode project settings
-.vscode
+# .vscode
 
 # Don't add xml/csv/png
 *.xml
