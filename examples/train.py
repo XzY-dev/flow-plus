@@ -132,28 +132,25 @@ def setup_exps_rllib(flow_params,
     """
     from ray import tune
     from ray.tune.registry import register_env
-    try:
-        from ray.rllib.agents.agent import get_agent_class
-    except ImportError:
-        from ray.rllib.agents.registry import get_agent_class
-
+    from ray.tune.registry import get_trainable_cls
+    from ray.rllib.algorithms.ppo import PPOConfig
     horizon = flow_params['env'].horizon
 
     alg_run = "PPO"
 
-    agent_cls = get_agent_class(alg_run)
-    config = deepcopy(agent_cls._default_config)
-
-    config["num_workers"] = n_cpus
-    config["train_batch_size"] = horizon * n_rollouts
-    config["gamma"] = 0.999  # discount rate
-    config["model"].update({"fcnet_hiddens": [32, 32, 32]})
-    config["use_gae"] = True
-    config["lambda"] = 0.97
-    config["kl_target"] = 0.02
-    config["num_sgd_iter"] = 10
-    config["horizon"] = horizon
-
+    agent_cls = get_trainable_cls(alg_run)
+    config = deepcopy(agent_cls.get_default_config())
+    config.training(gamma=0.999, lr=0.01, kl_coeff=0.3, use_gae=True,
+                    lambda_=0.97, kl_target=0.02, num_sgd_iter=10)  # doctest: +SKIP
+    config.resources(num_gpus=0)  # doctest: +SKIP
+    config.rollouts(num_rollout_workers=n_cpus)  # doctest: +SKIP
+    config.train_batch_size = horizon * n_rollouts
+    # Build a Algorithm object from the config and run 1 training iteration.
+    # algo = config.build(env="CartPole-v1")
+    config.model.update({"fcnet_hiddens": [32, 32, 32]})
+    # config["horizon"] = horizon
+    config.framework("torch")
+    # print(config.to_dict())  # doctest: +SKIP
     # save the flow params for replay
     flow_json = json.dumps(
         flow_params, cls=FlowParamsEncoder, sort_keys=True, indent=4)
@@ -200,8 +197,8 @@ def train_rllib(submodule, flags):
         "config": {
             **config
         },
-        "checkpoint_freq": 20,
-        "checkpoint_at_end": True,
+        # "checkpoint_freq": 20,
+        # "checkpoint_at_end": True,
         "max_failures": 999,
         "stop": {
             "training_iteration": flags.num_steps,
@@ -210,7 +207,7 @@ def train_rllib(submodule, flags):
 
     if flags.checkpoint_path is not None:
         exp_config['restore'] = flags.checkpoint_path
-    run_experiments({flow_params["exp_tag"]: exp_config})
+    run_experiments(experiments={"experiment": exp_config})
 
 
 def train_h_baselines(env_name, args, multiagent):
